@@ -1,0 +1,202 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.animation import FuncAnimation
+from tkinter import Tk, filedialog, Button, Label, Frame, Radiobutton, IntVar, messagebox
+import matplotlib.dates as mdates
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+class DataVisualizerApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Aplicație de vizualizare date senzori")
+        self.root.geometry("300x150")
+
+        self.start_frame = Frame(root)
+        self.start_frame.pack(pady=20)
+
+        self.label = Label(self.start_frame, text="Selectați un fișier CSV pentru a vizualiza datele senzorului")
+        self.label.pack(pady=10)
+
+        self.open_button = Button(self.start_frame, text="Deschide fișier CSV", command=self.on_open_file)
+        self.open_button.pack(pady=10)
+
+        self.quit_button = Button(self.start_frame, text="Ieșire", command=root.quit)
+        self.quit_button.pack(pady=10)
+
+        self.sidebar_frame = None
+        self.main_frame = None
+
+        self.file_path = None
+        self.data = None
+        self.fig = None
+        self.ax = None
+        self.canvas = None
+        self.anim = None
+
+    
+        self.thresholds = {
+            'Temperatura1': (10, 40),  
+            'Temperatura2': (10, 40),  
+            'Nivel_apa': (-50, 50),    
+            'Turbiditate': (0, 400),   
+            'pH': (6.5, 9,5)           
+        }
+
+        # alerte email
+        self.email_address = 'ioanataranu2001@gmail.com'
+        self.email_password = 'eyxy zosk fyji cngw' 
+        self.target_email_address = 'ioanataranu2001@gmail.com'
+
+
+    def on_open_file(self):
+        self.file_path = filedialog.askopenfilename(filetypes=[("Fișiere CSV", "*.csv")])
+        if self.file_path:
+            try:
+                self.data = self.read_data(self.file_path)
+                self.setup_main_interface()
+                self.start_live_update()
+            except Exception as e:
+                messagebox.showerror("Eroare", f"A apărut o eroare: {e}")
+
+    def setup_main_interface(self):
+        self.start_frame.pack_forget()
+        self.root.geometry("1000x600")
+
+        self.sidebar_frame = Frame(self.root, width=200, bg='lightgray', height=500, relief='sunken', borderwidth=2)
+        self.sidebar_frame.pack(expand=False, fill='both', side='left', anchor='nw')
+
+        self.main_frame = Frame(self.root, width=800, height=500)
+        self.main_frame.pack(expand=True, fill='both', side='right')
+
+        self.label = Label(self.sidebar_frame, text="Selectați graficul de afișat", bg='lightgray')
+        self.label.pack(pady=10)
+
+        self.graph_choice = IntVar()
+        self.graph_choice.set(0)  
+
+        self.radio_buttons = [
+            Radiobutton(self.sidebar_frame, text="Temperatura 1", variable=self.graph_choice, value=0, bg='lightgray', command=self.update_plot),
+            Radiobutton(self.sidebar_frame, text="Temperatura 2", variable=self.graph_choice, value=1, bg='lightgray', command=self.update_plot),
+            Radiobutton(self.sidebar_frame, text="Nivel apă", variable=self.graph_choice, value=2, bg='lightgray', command=self.update_plot),
+            Radiobutton(self.sidebar_frame, text="Turbiditate", variable=self.graph_choice, value=3, bg='lightgray', command=self.update_plot),
+            Radiobutton(self.sidebar_frame, text="pH", variable=self.graph_choice, value=4, bg='lightgray', command=self.update_plot),
+            Radiobutton(self.sidebar_frame, text="Toți senzorii", variable=self.graph_choice, value=5, bg='lightgray', command=self.update_plot)
+        ]
+
+        for rb in self.radio_buttons:
+            rb.pack(anchor='w', padx=20, pady=5)
+
+        self.quit_button = Button(self.sidebar_frame, text="Ieșire", command=self.root.quit, bg='lightgray')
+        self.quit_button.pack(pady=10)
+
+        self.fig, self.ax = plt.subplots(figsize=(10, 6))
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.main_frame)
+        self.canvas.get_tk_widget().pack(expand=True, fill='both')
+
+    def read_data(self, file_path):
+        data = pd.read_csv(file_path)
+        data.columns = [col.strip() for col in data.columns]  
+        if 'time' not in data.columns:
+            raise ValueError("Coloana 'time' lipsește în fișierul CSV.")
+        
+        
+        time_format = '%Y.%m.%d,%H:%M:%S'
+        data['time'] = pd.to_datetime(data['time'].str.strip(), format=time_format)
+        
+        return data
+
+    def check_alerts(self):
+        for param, (min_val, max_val) in self.thresholds.items():
+            if param in self.data.columns:
+                current_value = self.data[param].iloc[-1]
+                if current_value < min_val or current_value > max_val:
+                    self.send_alert(param, current_value, min_val, max_val)
+
+    def send_alert(self, parameter, value, min_val, max_val):
+        message = f"Alertă: Valoarea {parameter} de {value} este în afara intervalului! (min: {min_val}, max: {max_val})"
+        self.send_email(message)
+
+    def send_email(self, message):
+        msg = MIMEMultipart()
+        msg['From'] = self.email_address
+        msg['To'] = self.target_email_address
+        msg['Subject'] = 'Alertă senzor'
+
+        msg.attach(MIMEText(message, 'plain'))
+
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(self.email_address, self.email_password)
+        text = msg.as_string()
+        server.sendmail(self.email_address, self.target_email_address, text)
+        server.quit()
+
+    def update_plot(self):
+        if self.data is None:
+            return
+
+        self.ax.clear()
+
+        choice = self.graph_choice.get()
+        if choice == 0:
+            self.ax.plot(self.data['time'], self.data['Temperatura1'], label='Temperatura1', color='b')
+            self.ax.set_ylabel('Temperatura 1')
+            self.ax.set_title('Temperatura 1 în timp real')
+        elif choice == 1:
+            self.ax.plot(self.data['time'], self.data['Temperatura2'], label='Temperatura2', color='g')
+            self.ax.set_ylabel('Temperatura 2')
+            self.ax.set_title('Temperatura 2 în timp real')
+        elif choice == 2:
+            self.ax.plot(self.data['time'], self.data['Nivel_apa'], label='Nivel_apa', color='r')
+            self.ax.set_ylabel('Nivel Apă')
+            self.ax.set_title('Nivel Apă în timp real')
+        elif choice == 3:
+            self.ax.plot(self.data['time'], self.data['Turbiditate'], label='Turbiditate', color='c')
+            self.ax.set_ylabel('Turbiditate')
+            self.ax.set_title('Turbiditate în timp real')
+        elif choice == 4:
+            self.ax.plot(self.data['time'], self.data['pH'], label='pH', color='m')
+            self.ax.set_ylabel('pH')
+            self.ax.set_title('pH în timp real')
+        elif choice == 5:
+            self.ax.plot(self.data['time'], self.data['Temperatura1'], label='Temperatura1', color='b')
+            self.ax.plot(self.data['time'], self.data['Temperatura2'], label='Temperatura2', color='g')
+            self.ax.plot(self.data['time'], self.data['Nivel_apa'], label='Nivel_apa', color='r')
+            self.ax.plot(self.data['time'], self.data['Turbiditate'], label='Turbiditate', color='c')
+            self.ax.plot(self.data['time'], self.data['pH'], label='pH', color='m')
+            self.ax.set_ylabel('Valori')
+            self.ax.set_title('Toți senzorii în timp real')
+            self.ax.legend()
+
+        self.ax.set_xlabel('Timp')
+        self.ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=1))
+        self.ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y.%m.%d,%H:%M:%S'))
+        plt.setp(self.ax.get_xticklabels(), rotation=45, ha="right")
+        self.ax.grid(True)
+
+        self.fig.tight_layout()
+        self.canvas.draw()
+
+    def update_plots(self, frame):
+        try:
+            self.data = self.read_data(self.file_path)
+            self.check_alerts()
+        except Exception as e:
+            print(f"Eroare la citirea datelor: {e}")
+            return
+
+        self.update_plot()
+
+    def start_live_update(self):
+        if self.anim:
+            self.anim.event_source.stop()
+        self.anim = FuncAnimation(self.fig, self.update_plots, interval=60000, cache_frame_data=False)
+        self.canvas.draw()
+
+if __name__ == '__main__':
+    root = Tk()
+    app = DataVisualizerApp(root)
+    root.mainloop()
