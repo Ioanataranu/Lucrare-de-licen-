@@ -38,11 +38,11 @@ class DataVisualizerApp:
 
     
         self.thresholds = {
-            'Temperatura1': (10, 40),  
-            'Temperatura2': (10, 40),  
-            'Nivel_apa': (-50, 50),    
-            'Turbiditate': (0, 400),   
-            'pH': (6.5, 9,5)           
+            'Temperatura1': (10, 30),  
+            'Temperatura2': (10, 30),  
+            'Nivel_apa': (0, 0),    
+            'Turbiditate': (0, 250),   
+            'pH': (6.5, 9)           
         }
 
         # alerte email
