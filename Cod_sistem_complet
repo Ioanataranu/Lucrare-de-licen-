@@ -4,7 +4,6 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include "DFRobot_ESP_PH.h"
-#include "EEPROM.h"
 #include <esp_sleep.h>
 
 #define ONE_WIRE_BUS1 25 
@@ -219,7 +218,7 @@ void do_send(osjob_t* j) {
       
         transmissionCount++;
         Serial.print("Transmission count: ");
-        Serial.println(transmissionCoun
+        Serial.println(transmissionCount);
 
         
         if (transmissionCount > MAX_TRANSMISSIONS) {
